@@ -1,0 +1,37 @@
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+
+title User Information Collector
+
+echo ==========================
+echo   User Information Form
+echo ==========================
+echo.
+
+set /p "name=Enter your full name: "
+set /p "age=Enter your age: "
+
+:askemail
+set /p "email=Enter your email: "
+echo %email% | findstr /R "^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@[A-Za-z0-9.-][A-Za-z0-9.-]*\.[A-Za-z][A-Za-z][A-Za-z]*$" >nul
+if errorlevel 1 (
+    echo Invalid email format. Please try again.
+    goto askemail
+)
+
+set /p "city=Enter your city: "
+set /p "country=Enter your country: "
+
+echo.
+echo =====================================
+echo     Confirm Your Information
+echo =====================================
+echo Name: %name%
+echo Age: %age%
+echo Email: %email%
+echo City: %city%
+echo Country: %country%
+echo =====================================
+echo.
+
+pause
