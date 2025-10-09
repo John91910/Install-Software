@@ -1,0 +1,18 @@
+# Run-CCleaner.ps1
+# Runs CCleaner with your saved settings and logs the run.
+
+$possiblePaths = @(
+  "$Env:ProgramFiles\CCleaner\CCleaner64.exe",
+  "$Env:ProgramFiles\CCleaner\CCleaner.exe",
+  "$Env:ProgramFiles(x86)\CCleaner\CCleaner.exe"
+)
+
+$exe = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $exe) { Write-Error "CCleaner not found. Install it or update the path."; exit 1 }
+
+$log = Join-Path $Env:TEMP ("CCleaner_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".log")
+
+# /AUTO runs cleaning silently using your saved CCleaner settings
+Start-Process -FilePath $exe -ArgumentList "/AUTO" -Wait -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $log
+
+Write-Host "CCleaner run complete. Log: $log"
