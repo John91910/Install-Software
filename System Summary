@@ -1,0 +1,94 @@
+# =========================
+# System Summary → Desktop
+# =========================
+
+# Resolve Desktop path and output file
+$desktop = [Environment]::GetFolderPath('Desktop')
+$outFile = Join-Path $desktop ("System_Summary_{0:yyyy-MM-dd_HH-mm-ss}.txt" -f (Get-Date))
+
+# Collect system info
+$os  = Get-CimInstance Win32_OperatingSystem
+$cs  = Get-CimInstance Win32_ComputerSystem
+$cpu = Get-CimInstance Win32_Processor
+
+# Build the top section of the report
+$report = @"
+===============================
+      System Summary Report
+===============================
+Generated: $(Get-Date)
+User:      $env:USERNAME
+Computer:  $env:COMPUTERNAME
+
+[OS]
+Caption : $($os.Caption)
+Version : $($os.Version)
+Build   : $($os.BuildNumber)
+
+[Computer]
+Name    : $env:COMPUTERNAME
+
+[CPU]
+Name                : $($cpu.Name)
+Manufacturer        : $($cpu.Manufacturer)
+Cores               : $($cpu.NumberOfCores)
+Logical Processors  : $($cpu.NumberOfLogicalProcessors)
+Max Clock (MHz)     : $($cpu.MaxClockSpeed)
+
+[Memory]
+Installed RAM (GB)  : {0:N2}
+
+[IP Configuration]
+"@ -f ($cs.TotalPhysicalMemory / 1GB)
+
+# Gather IP configuration with a fallback for older systems
+function Get-IpConfigText {
+    if (Get-Command Get-NetIPConfiguration -ErrorAction SilentlyContinue) {
+        $net = Get-NetIPConfiguration
+        $blocks = foreach ($n in $net) {
+            $ipv4 = ($n.IPv4Address | ForEach-Object { $_.IPAddress }) -join ', '
+            $ipv6 = ($n.IPv6Address | ForEach-Object { $_.IPAddress }) -join ', '
+            $gw4  = $n.IPv4DefaultGateway.NextHop
+            $dns  = ($n.DNSServer.ServerAddresses) -join ', '
+@"
+Adapter: $($n.InterfaceAlias)
+  IPv4 Address(es) : $ipv4
+  IPv6 Address(es) : $ipv6
+  IPv4 Gateway     : $gw4
+  DNS Servers      : $dns
+"@
+        }
+        return ($blocks -join "`r`n")
+    }
+    else {
+        # Fallback: WMI (older Windows/PowerShell)
+        $nics = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter "IPEnabled=TRUE"
+        $blocks = foreach ($nic in $nics) {
+            $ipv4 = ($nic.IPAddress | Where-Object { $_ -match '^\d+\.' }) -join ', '
+            $ipv6 = ($nic.IPAddress | Where-Object { $_ -match ':' }) -join ', '
+            $gw   = ($nic.DefaultIPGateway) -join ', '
+            $dns  = ($nic.DNSServerSearchOrder) -join ', '
+@"
+Adapter: $($nic.Description)
+  IPv4 Address(es) : $ipv4
+  IPv6 Address(es) : $ipv6
+  Default Gateway  : $gw
+  DNS Servers      : $dns
+"@
+        }
+        return ($blocks -join "`r`n")
+    }
+}
+
+$report += Get-IpConfigText
+
+# Write report to Desktop
+$report | Set-Content -Path $outFile -Encoding UTF8
+
+# Also echo key items to the console (quick view)
+Write-Host "`n===== Quick View ====="
+Write-Host "OS: $($os.Caption) $($os.Version) (Build $($os.BuildNumber))"
+Write-Host "Computer Name: $env:COMPUTERNAME"
+Write-Host "CPU: $($cpu.Name) | Cores: $($cpu.NumberOfCores) | Logical: $($cpu.NumberOfLogicalProcessors)"
+Write-Host ("Installed RAM: {0:N2} GB" -f ($cs.TotalPhysicalMemory / 1GB))
+Write-Host "Report saved to: $outFile"
