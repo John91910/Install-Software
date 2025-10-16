@@ -1,0 +1,175 @@
+# 🎃 Halloween House with Fireworks + Lightning + Spooky Beeps
+# Save as: HalloweenHouse.ps1
+# Tip: For best visuals, use a dark console theme and a wide window.
+
+# -------------------- Settings --------------------
+$Rounds        = 4          # How many animation cycles to run
+$EnableMusic   = $true      # Toggle spooky background beeps
+$MusicVolumeHz = 1.0        # Multiplier for pitch (1.0 = default)
+$MusicTempo    = 1.0        # Multiplier for note lengths (1.0 = default)
+
+# -------------------- Scene Assets --------------------
+$colors = "DarkRed","DarkMagenta","DarkYellow","DarkGreen","DarkCyan","DarkBlue"
+$skyWidth = [Console]::WindowWidth - 2
+if ($skyWidth -lt 60) { $skyWidth = 60 }
+
+$house = @'
+              /\                 *
+             /  \     🎃     *     *
+            /    \        *     *
+           /______\       *  💥
+          |  __  |  *      🎇
+          | |  | |      *
+          | |__| |   💀
+          |______|     *
+          ||    ||     *
+      ~~~~~~~~~~~~~~~~~~~~~~~~~
+        Happy Halloween Night!
+'@
+
+$spookyBanner = @"
+👻 Welcome to the Haunted House... 
+Thunder cracks... ⚡
+The wind howls outside... 🌬️
+"@
+
+# -------------------- Utility --------------------
+function Write-Centered {
+    param([string]$Text, [ConsoleColor]$Color = [ConsoleColor]::Gray)
+    $lines = $Text -split "`n"
+    foreach ($line in $lines) {
+        $pad = [Math]::Max(0, ($skyWidth - $line.Length) / 2)
+        Write-Host (" " * $pad) -NoNewline
+        Write-Host $line -ForegroundColor $Color
+    }
+}
+
+# -------------------- Fireworks --------------------
+function Show-Fireworks {
+    $fireworkSymbols = "💥","🎇","✨","🎆","💫","*"
+    $bursts = 24
+    for ($i=0; $i -lt $bursts; $i++) {
+        $x = Get-Random -Minimum 6 -Maximum ([Math]::Min($skyWidth-3, 68))
+        $symbol = $fireworkSymbols | Get-Random
+        $color = $colors | Get-Random
+        Write-Host (" " * $x) "$symbol" -ForegroundColor $color
+        Start-Sleep -Milliseconds (Get-Random -Minimum 60 -Maximum 180)
+    }
+}
+
+# -------------------- Lightning --------------------
+function Flash-Lightning {
+    # Quick bright screen flashes + jagged bolt lines
+    $origFG = $Host.UI.RawUI.ForegroundColor
+    $origBG = $Host.UI.RawUI.BackgroundColor
+
+    # Randomize how intense the storm is
+    $flashes = Get-Random -Minimum 2 -Maximum 4
+    for ($f=0; $f -lt $flashes; $f++) {
+        # Flash
+        $Host.UI.RawUI.BackgroundColor = "White"
+        $Host.UI.RawUI.ForegroundColor = "Black"
+        Clear-Host
+        Write-Centered ("⚡ CRACK! ⚡") "DarkBlue"
+        Start-Sleep -Milliseconds 80
+
+        # Fade
+        $Host.UI.RawUI.BackgroundColor = "Gray"
+        $Host.UI.RawUI.ForegroundColor = "Black"
+        Clear-Host
+        Write-Centered ("⚡ ...rumble...") "DarkGray"
+        Start-Sleep -Milliseconds 90
+
+        # Return colors
+        $Host.UI.RawUI.ForegroundColor = $origFG
+        $Host.UI.RawUI.BackgroundColor = $origBG
+        Clear-Host
+
+        # Draw a quick ASCII lightning bolt over the house
+        $bolt = @"
+             \ 
+              \\
+               \\\
+                \\\\
+                 \\\\\
+                  \\\\\\
+                   \\\\\\\
+"@
+        Write-Centered $house "DarkYellow"
+        Start-Sleep -Milliseconds 80
+        Write-Centered $bolt "Yellow"
+        Start-Sleep -Milliseconds (Get-Random -Minimum 120 -Maximum 220)
+    }
+}
+
+# -------------------- Spooky Beeps (Background “Music”) --------------------
+# Simple riff using frequencies (Hz) and durations (ms)
+$Theme = @(
+    @{Hz=392; Dur=280}, @{Hz=370; Dur=200}, @{Hz=349; Dur=350}, @{Hz=294; Dur=380},
+    @{Hz=262; Dur=220}, @{Hz=233; Dur=240}, @{Hz=196; Dur=500},
+    # minor lift
+    @{Hz=233; Dur=220}, @{Hz=262; Dur=220}, @{Hz=294; Dur=260}, @{Hz=196; Dur=600}
+)
+
+$StopMusic = $false
+
+function Start-SpookyMusic {
+    Start-Job -ScriptBlock {
+        param($Theme, $Tempo, $PitchMult, [ref]$StopFlag)
+        try {
+            while (-not $StopFlag.Value) {
+                foreach ($note in $Theme) {
+                    if ($StopFlag.Value) { break }
+                    $hz  = [int]([double]$note.Hz * $PitchMult)
+                    $dur = [int]([double]$note.Dur * $Tempo)
+                    try { [Console]::Beep($hz, $dur) } catch { Start-Sleep -Milliseconds $dur }
+                    Start-Sleep -Milliseconds ([int](60 * $Tempo))
+                }
+            }
+        } catch {}
+    } -ArgumentList ($Theme, $MusicTempo, $MusicVolumeHz, ([ref]$script:StopMusic)) | Out-Null
+}
+
+function Stop-SpookyMusic {
+    $script:StopMusic = $true
+    Get-Job | Receive-Job -ErrorAction SilentlyContinue | Out-Null
+    Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+}
+
+# -------------------- Intro --------------------
+function Haunted-Intro {
+    Clear-Host
+    Write-Centered $spookyBanner "DarkMagenta"
+    Start-Sleep -Milliseconds 600
+}
+
+# -------------------- Main --------------------
+try {
+    if ($EnableMusic) { Start-SpookyMusic }
+    Haunted-Intro
+
+    for ($round=1; $round -le $Rounds; $round++) {
+        Clear-Host
+        Write-Centered $house "DarkYellow"
+        Start-Sleep -Milliseconds 250
+
+        # Randomize the order so each round feels different
+        $acts = @("fireworks","lightning","fireworks")
+        ($acts | Get-Random -Count $acts.Count) | ForEach-Object {
+            switch ($_){
+                "fireworks" { Show-Fireworks }
+                "lightning" { Flash-Lightning }
+            }
+        }
+
+        Write-Host ""
+        Write-Centered "🎃 Trick or Treat! Round $round/$Rounds 🎃" "DarkGreen"
+        Start-Sleep -Milliseconds 500
+    }
+
+    Write-Host ""
+    Write-Centered "🦇 Thanks for visiting the Haunted House. Stay spooky! 🕯️" "DarkCyan"
+}
+finally {
+    if ($EnableMusic) { Stop-SpookyMusic }
+}
