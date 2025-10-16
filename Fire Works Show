@@ -45,9 +45,15 @@ function Draw-At {
 # Helper: clear and center title
 function Show-Header {
     [System.Console]::Clear()
+    # Title line
     $title = "✨ Fireworks Show — Enjoy! (Press Ctrl+C to stop) ✨"
-    $tx = [math]::Max(0, ([int]($width/2) - [int]($title.Length/2)))
+    $tx = [math]::Max(0, ([int]([System.Console]::WindowWidth/2) - [int]($title.Length/2)))
     Draw-At -x $tx -y 1 -ch $title -color "White"
+
+    # Centered welcome line
+    $welcome = "Welcome A+ Scholars!"
+    $wx = [math]::Max(0, ([int]([System.Console]::WindowWidth/2) - [int]($welcome.Length/2)))
+    Draw-At -x $wx -y 3 -ch $welcome -color "Green"
 }
 
 # Draw a small twinkle at bottom as launcher
