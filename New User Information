@@ -3,10 +3,6 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 title User Information Collector
 
-:: ===== Email domain config =====
-set "REQ_DOMAIN_DISPLAY=example.com"
-set "REQ_DOMAIN_REGEX=example\.com"
-
 echo ==========================
 echo   User Information Form
 echo ==========================
@@ -17,10 +13,11 @@ set /p "age=Enter your age: "
 
 :askemail
 set "email="
-set /p "email=Enter your email (@%REQ_DOMAIN_DISPLAY% only): "
-echo(!email!| findstr /R /I /C:"^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@%REQ_DOMAIN_REGEX%$" >nul
+set /p "email=Enter your email: "
+REM Validate: local@domain.tld where TLD is 3+ letters
+echo(!email!| findstr /R /I /C:"^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@[A-Za-z0-9-][A-Za-z0-9.-]*\.[A-Za-z][A-Za-z][A-Za-z]*$" >nul
 if errorlevel 1 (
-    echo Invalid email. Must be name@%REQ_DOMAIN_DISPLAY%
+    echo Invalid email format. Please try again.
     goto askemail
 )
 
