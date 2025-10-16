@@ -1,7 +1,7 @@
 <#
 Fireworks.ps1
 Simple console "fireworks" animation for PowerShell.
-Author: (Professor St. John)
+Author: Jarvis (for Professor St. John)
 Safe visual simulation — no real explosives.
 #>
 
@@ -105,4 +105,49 @@ try {
 
         # simulate rise (small vertical trail)
         $launcherX = [int]($width/2)
-        $launcherY
+        $launcherY = $height - 4
+        $stepsUp = [Math]::Max(3, [int]($launcherY - $cy))
+        for ($s = 0; $s -lt $stepsUp; $s++) {
+            $tY = $launcherY - $s
+            Draw-At -x $launcherX -y $tY -ch '|' -color 'DarkYellow'
+            Start-Sleep -Milliseconds ($FrameDelayMs/2)
+            # erase trail behind (leave a tiny glow)
+            if ($s -gt 1) {
+                Draw-At -x $launcherX -y ($tY+1) -ch '.' -color 'Gray'
+            }
+        }
+
+        # explosion
+        Explode-At -cx $cx -cy $cy -maxR $radius -color $color
+
+        # small pause between explosions
+        Start-Sleep -Milliseconds (300 + $rand.Next(0,600))
+
+        # clear some of the middle area to simulate sky clearing
+        $clearCount = [Math]::Min(30, [int]($width * 0.3))
+        for ($i = 0; $i -lt $clearCount; $i++) {
+            $rx = $rand.Next(0, $width)
+            $ry = $rand.Next(2, [Math]::Max(3,$height-4))
+            Draw-At -x $rx -y $ry -ch ' ' -color 'White'
+        }
+    }
+
+    # Finale: a rapid cluster of small fireworks near center
+    for ($f = 0; $f -lt 6; $f++) {
+        $cx = [int]($width/2) + $rand.Next(-12,12)
+        $cy = [int]($height/3) + $rand.Next(-3,3)
+        $color = $Colors[$rand.Next(0, $Colors.Length)]
+        Explode-At -cx $cx -cy $cy -maxR (3 + $rand.Next(0,5)) -color $color
+    }
+
+    Start-Sleep -Milliseconds 800
+    Show-Header
+    $bye = "Show complete — Thanks for watching!"
+    $bx = [math]::Max(0, ([int]($width/2) - [int]($bye.Length/2)))
+    Draw-At -x $bx -y [math]::Min($height-3, [int]($height/2)) -ch $bye -color 'Green'
+    Start-Sleep -Seconds 3
+} catch {
+    Write-Host "`nThe fireworks encountered an error or the window was resized. Try running again." -ForegroundColor Yellow
+} finally {
+    [System.Console]::CursorVisible = $true
+}
