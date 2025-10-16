@@ -1,1 +1,43 @@
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
 
+title User Information Collector
+
+:: ===== Config: set the required email domain here =====
+:: Use a backslash before dots for the regex (e.g., example\.com, school\.edu)
+set "REQ_DOMAIN=example\.com"
+:: For display text without backslashes:
+set "REQ_DOMAIN_DISPLAY=%REQ_DOMAIN:\.=.%"
+
+echo ==========================
+echo   User Information Form
+echo ==========================
+echo.
+
+set /p "name=Enter your full name: "
+set /p "age=Enter your age: "
+
+:askemail
+set /p "email=Enter your email (@%REQ_DOMAIN_DISPLAY% only): "
+echo %email% | findstr /R /I "^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@%REQ_DOMAIN%$" >nul
+if errorlevel 1 (
+    echo Invalid email. Must be name@%REQ_DOMAIN_DISPLAY%
+    goto askemail
+)
+
+set /p "city=Enter your city: "
+set /p "country=Enter your country: "
+
+echo.
+echo =====================================
+echo     Confirm Your Information
+echo =====================================
+echo Name:    %name%
+echo Age:     %age%
+echo Email:   %email%
+echo City:    %city%
+echo Country: %country%
+echo =====================================
+echo.
+
+pause
