@@ -12,8 +12,25 @@ set /p "name=Enter your full name: "
 set /p "age=Enter your age: "
 
 :askemail
-set /p "email=Enter your email (@example.com only): "
-echo %email% | findstr /R /I "^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@example\.com$" >nul
+# --- Email: must be name@example.com ---
+$RequiredDomain = 'example.com'
+
+do {
+    $Email = (Read-Host "Enter your email (@$RequiredDomain only)").Trim()
+
+    # Basic email shape + capture domain
+    $ok = $Email -imatch '^([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})$'
+    if ($ok) {
+        $domain = $Matches[2].ToLower()
+        $ok = ($domain -eq $RequiredDomain.ToLower())
+    }
+
+    if (-not $ok) {
+        Write-Host "Invalid email. Must be name@$RequiredDomain" -ForegroundColor Red
+    }
+} until ($ok)
+# $Email now holds a validated address like name@example.com
+
 if errorlevel 1 (
     echo Invalid email. Must be name@example.com
     goto askemail
