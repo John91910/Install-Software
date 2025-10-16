@@ -1,98 +1,61 @@
-@echo off
-setlocal EnableExtensions EnableDelayedExpansion
+# User Information Collector (PowerShell)
 
-title User Information Collector
+Write-Host "=========================="
+Write-Host "  User Information Form"
+Write-Host "==========================`n"
 
-echo ==========================
-echo   User Information Form
-echo ==========================
-echo.
+# --- Full Name: letters only (spaces allowed between names) ---
+$NamePattern = '^[A-Za-z]+(?: [A-Za-z]+)*$'
+do {
+    $FullName = Read-Host "Enter your full name (letters only; spaces allowed)"
+    if ($FullName -notmatch $NamePattern) {
+        Write-Host "Invalid name. Use letters only (e.g., John Smith)." -ForegroundColor Red
+    }
+} until ($FullName -match $NamePattern)
 
-:: ----------------------------
-:: NAME (letters and spaces)
-:: ----------------------------
-:askname
-set /p "name=Enter your full name (letters and spaces only): "
-echo %name%| findstr /R "^[A-Za-z][A-Za-z ]*$" >nul
-if errorlevel 1 (
-    echo Invalid name. Use letters and spaces only. Try again.
-    goto askname
-)
+# --- Email: must have local and domain parts (name@domain.tld) ---
+$EmailPattern = '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+do {
+    $Email = Read-Host "Enter your email (e.g., name@example.com)"
+    if ($Email -notmatch $EmailPattern) {
+        Write-Host "Invalid email. Use format name@domain.tld" -ForegroundColor Red
+    }
+} until ($Email -match $EmailPattern)
 
-:: ----------------------------
-:: AGE (no extra validation here)
-:: ----------------------------
-set /p "age=Enter your age: "
+# --- Age: exactly two digits ---
+$AgePattern = '^\d{2}$'
+do {
+    $Age = Read-Host "Enter your age (exactly two digits, e.g., 09, 27, 45)"
+    if ($Age -notmatch $AgePattern) {
+        Write-Host "Invalid age. Enter exactly two digits." -ForegroundColor Red
+    }
+} until ($Age -match $AgePattern)
 
-:: ----------------------------
-:: EMAIL (simple regex check)
-:: ----------------------------
-:askemail
-set /p "email=Enter your email: "
-echo %email% | findstr /R "^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@[A-Za-z0-9.-][A-Za-z0-9.-]*\.[A-Za-z][A-Za-z][A-Za-z]*$" >nul
-if errorlevel 1 (
-    echo Invalid email format. Please try again.
-    goto askemail
-)
+# --- ZIP Code: exactly five digits ---
+$ZipPattern = '^\d{5}$'
+do {
+    $Zip = Read-Host "Enter your ZIP Code (5 digits)"
+    if ($Zip -notmatch $ZipPattern) {
+        Write-Host "Invalid ZIP. Enter exactly five digits (e.g., 92101)." -ForegroundColor Red
+    }
+} until ($Zip -match $ZipPattern)
 
-:: ----------------------------
-:: CITY / COUNTRY
-:: ----------------------------
-set /p "city=Enter your city: "
-set /p "country=Enter your country: "
+# --- Summary ---
+Write-Host "`n====================================="
+Write-Host "    Confirm Your Information"
+Write-Host "====================================="
+Write-Host ("Full Name: {0}" -f $FullName)
+Write-Host ("Email:     {0}" -f $Email)
+Write-Host ("Age:       {0}" -f $Age)
+Write-Host ("ZIP:       {0}" -f $Zip)
+Write-Host "====================================="
 
-:: ----------------------------
-:: STATE (US 2-letter code from valid list)
-:: ----------------------------
-set "valid_states= AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC "
-:askstate
-set /p "state=Enter your 2-letter US state/territory (e.g., CA): "
-set "state=%state: =%"
-if not "%state%"=="" (
-    if not "%state:~2,1%"=="" (
-        echo Please enter exactly two letters (e.g., CA).
-        goto askstate
-    )
-)
-:: Ensure two letters
-echo %state%| findstr /R /I "^[A-Z][A-Z]$" >nul
-if errorlevel 1 (
-    echo Please enter exactly two letters (A-Z). Try again.
-    goto askstate
-)
-:: Check against list (case-insensitive)
-echo  %valid_states% | findstr /I " %state% " >nul
-if errorlevel 1 (
-    echo "%state%" is not a recognized US state/territory code. Try again.
-    goto askstate
-)
+# Optional: export to CSV in current folder (uncomment to use)
+# [PSCustomObject]@{
+#     FullName = $FullName
+#     Email    = $Email
+#     Age      = $Age
+#     Zip      = $Zip
+# } | Export-Csv -Path ".\UserInfo.csv" -NoTypeInformation -Append
 
-:: ----------------------------
-:: ZIP CODE (5-digit or ZIP+4)
-:: ----------------------------
-:askzip
-set /p "zip=Enter your ZIP Code (##### or #####-####): "
-echo %zip%| findstr /R "^[0-9][0-9][0-9][0-9][0-9]$" >nul
-if errorlevel 1 (
-    echo %zip%| findstr /R "^[0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]$" >nul
-    if errorlevel 1 (
-        echo Invalid ZIP Code. Use 5 digits or 5+4 (e.g., 92101 or 92101-1234).
-        goto askzip
-    )
-)
-
-echo.
-echo =====================================
-echo     Confirm Your Information
-echo =====================================
-echo Name:    %name%
-echo Age:     %age%
-echo Email:   %email%
-echo City:    %city%
-echo State:   %state%
-echo ZIP:     %zip%
-echo Country: %country%
-echo =====================================
-echo.
-
-pause
+[void](Read-Host "Press Enter to finish")
