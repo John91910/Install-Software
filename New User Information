@@ -8,8 +8,27 @@ echo   User Information Form
 echo ==========================
 echo.
 
-set /p "name=Enter your full name: "
-set /p "age=Enter your age: "
+:: --- Full Name: required; letters and spaces only ---
+:askname
+set "name="
+set /p "name=Enter your full name (letters only): "
+REM Valid if it starts with a letter and then only letters/spaces
+echo(!name!| findstr /R /I /C:"^[A-Za-z][A-Za-z ]*$" >nul
+if errorlevel 1 (
+    echo Please enter your full name using letters and spaces only.
+    goto askname
+)
+
+:: --- Age: required; exactly two digits (00–99) ---
+:askage
+set "age="
+set /p "age=Enter your age (exactly two digits): "
+REM Valid if it starts with two digits
+echo(!age!| findstr /R /I /C:"^[0-9][0-99]$" >nul
+if errorlevel 1 (
+    echo Please enter exactly two numbers (e.g., 09, 27, 45).
+    goto askage
+)
 
 :askemail
 set "email="
@@ -22,7 +41,8 @@ if errorlevel 1 (
 )
 
 set /p "city=Enter your city: "
-set /p "country=Enter your country: "
+set /p "State=Enter your State: "
+set /p "Country=Enter your Country: "
 
 echo.
 echo =====================================
@@ -32,6 +52,7 @@ echo Name:    %name%
 echo Age:     %age%
 echo Email:   %email%
 echo City:    %city%
+echo State:   %state%
 echo Country: %country%
 echo =====================================
 echo.
