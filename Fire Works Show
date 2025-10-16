@@ -1,0 +1,108 @@
+<#
+Fireworks.ps1
+Simple console "fireworks" animation for PowerShell.
+Author: (Professor St. John)
+Safe visual simulation — no real explosives.
+#>
+
+# --- Configuration ---
+$NumExplosions = 12
+$MaxRadius = 10
+$FrameDelayMs = 80
+$Colors = @('Yellow','Cyan','Magenta','Red','Green','White')
+$Sparks = '*+o@°•' -split ''
+$rand = New-Object System.Random
+
+# Try to get usable window sizes; provide defaults if unavailable
+try {
+    $width = [System.Console]::WindowWidth
+    $height = [System.Console]::WindowHeight
+} catch {
+    $width = 80
+    $height = 24
+}
+
+# Helper: draw a character at x,y with color
+function Draw-At {
+    param(
+        [int]$x,
+        [int]$y,
+        [string]$ch = '*',
+        [string]$color = 'White'
+    )
+    if ($x -lt 0 -or $x -ge $width -or $y -lt 0 -or $y -ge $height) { return }
+    try {
+        [System.Console]::SetCursorPosition($x, $y)
+        $oldFg = [System.Console]::ForegroundColor
+        [System.Console]::ForegroundColor = $color
+        [System.Console]::Write($ch)
+        [System.Console]::ForegroundColor = $oldFg
+    } catch {
+        # ignore if resize occurs mid-draw
+    }
+}
+
+# Helper: clear and center title
+function Show-Header {
+    [System.Console]::Clear()
+    $title = "✨ Fireworks Show — Enjoy! (Press Ctrl+C to stop) ✨"
+    $tx = [math]::Max(0, ([int]($width/2) - [int]($title.Length/2)))
+    Draw-At -x $tx -y 1 -ch $title -color "White"
+}
+
+# Draw a small twinkle at bottom as launcher
+function Draw-Launcher {
+    $lx = [math]::Max(2, [int]($width/2) - 2)
+    $ly = $height - 3
+    Draw-At -x $lx -y $ly -ch '▲' -color 'DarkYellow'
+    Draw-At -x ($lx+1) -y $ly -ch '|' -color 'DarkGray'
+}
+
+# Render expanding ring of sparks for one explosion
+function Explode-At {
+    param([int]$cx, [int]$cy, [int]$maxR, [string]$color)
+
+    for ($r = 0; $r -le $maxR; $r++) {
+        $numPoints = [Math]::Max(8, [int](6 + $r * 6))
+        for ($i = 0; $i -lt $numPoints; $i++) {
+            $angle = 2 * [Math]::PI * $i / $numPoints
+            $fx = [Math]::Round($cx + $r * [Math]::Cos($angle))
+            $fy = [Math]::Round($cy + $r * [Math]::Sin($angle) * 0.5) # squash for terminal char ratio
+            $spark = $Sparks[$rand.Next(0, $Sparks.Length)]
+            Draw-At -x $fx -y $fy -ch $spark -color $color
+        }
+        Start-Sleep -Milliseconds $FrameDelayMs
+    }
+
+    # fade: draw some dimmer sparks outward
+    for ($fade = 0; $fade -lt 2; $fade++) {
+        $numPoints = [Math]::Max(6, [int](8 + $fade * 4))
+        for ($i = 0; $i -lt $numPoints; $i++) {
+            $angle = 2 * [Math]::PI * $i / $numPoints + ($rand.NextDouble() * 0.5)
+            $fx = [Math]::Round($cx + ($maxR + $fade + $rand.NextDouble()) * [Math]::Cos($angle))
+            $fy = [Math]::Round($cy + ($maxR + $fade + $rand.NextDouble()) * [Math]::Sin($angle) * 0.5)
+            $spark = $Sparks[$rand.Next(0, $Sparks.Length)]
+            # dim color by switching to Dark variant when possible
+            $dimColor = if ($color -in 'Yellow','White') { 'Gray' } else { "Dark$color" }
+            Draw-At -x $fx -y $fy -ch $spark -color $dimColor
+        }
+        Start-Sleep -Milliseconds ($FrameDelayMs * 1.2)
+    }
+}
+
+# Main show
+try {
+    [System.Console]::CursorVisible = $false
+    Show-Header
+    Draw-Launcher
+
+    for ($expl = 0; $expl -lt $NumExplosions; $expl++) {
+        # random center but keep inside safe margins
+        $cx = $rand.Next(10, [Math]::Max(20, $width - 10))
+        $cy = $rand.Next(5, [Math]::Max(10, [int]($height/2)))
+        $color = $Colors[$rand.Next(0, $Colors.Length)]
+        $radius = $rand.Next(4, [Math]::Min($MaxRadius, [int]($height/3)))
+
+        # simulate rise (small vertical trail)
+        $launcherX = [int]($width/2)
+        $launcherY
