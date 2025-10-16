@@ -1,61 +1,37 @@
-# User Information Collector (PowerShell)
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
 
-Write-Host "=========================="
-Write-Host "  User Information Form"
-Write-Host "==========================`n"
+title User Information Collector
 
-# --- Full Name: letters only (spaces allowed between names) ---
-$NamePattern = '^[A-Za-z]+(?: [A-Za-z]+)*$'
-do {
-    $FullName = Read-Host "Enter your full name (letters only; spaces allowed)"
-    if ($FullName -notmatch $NamePattern) {
-        Write-Host "Invalid name. Use letters only (e.g., John Smith)." -ForegroundColor Red
-    }
-} until ($FullName -match $NamePattern)
+echo ==========================
+echo   User Information Form
+echo ==========================
+echo.
 
-# --- Email: must have local and domain parts (name@domain.tld) ---
-$EmailPattern = '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
-do {
-    $Email = Read-Host "Enter your email (e.g., name@example.com)"
-    if ($Email -notmatch $EmailPattern) {
-        Write-Host "Invalid email. Use format name@domain.tld" -ForegroundColor Red
-    }
-} until ($Email -match $EmailPattern)
+set /p "name=Enter your full name: "
+set /p "age=Enter your age: "
 
-# --- Age: exactly two digits ---
-$AgePattern = '^\d{2}$'
-do {
-    $Age = Read-Host "Enter your age (exactly two digits, e.g., 09, 27, 45)"
-    if ($Age -notmatch $AgePattern) {
-        Write-Host "Invalid age. Enter exactly two digits." -ForegroundColor Red
-    }
-} until ($Age -match $AgePattern)
+:askemail
+set /p "email=Enter your email: "
+echo %email% | findstr /R "^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@[A-Za-z0-9.-][A-Za-z0-9.-]*\.[A-Za-z][A-Za-z][A-Za-z]*$" >nul
+if errorlevel 1 (
+    echo Invalid email format. Please try again.
+    goto askemail
+)
 
-# --- ZIP Code: exactly five digits ---
-$ZipPattern = '^\d{5}$'
-do {
-    $Zip = Read-Host "Enter your ZIP Code (5 digits)"
-    if ($Zip -notmatch $ZipPattern) {
-        Write-Host "Invalid ZIP. Enter exactly five digits (e.g., 92101)." -ForegroundColor Red
-    }
-} until ($Zip -match $ZipPattern)
+set /p "city=Enter your city: "
+set /p "country=Enter your country: "
 
-# --- Summary ---
-Write-Host "`n====================================="
-Write-Host "    Confirm Your Information"
-Write-Host "====================================="
-Write-Host ("Full Name: {0}" -f $FullName)
-Write-Host ("Email:     {0}" -f $Email)
-Write-Host ("Age:       {0}" -f $Age)
-Write-Host ("ZIP:       {0}" -f $Zip)
-Write-Host "====================================="
+echo.
+echo =====================================
+echo     Confirm Your Information
+echo =====================================
+echo Name: %name%
+echo Age: %age%
+echo Email: %email%
+echo City: %city%
+echo Country: %country%
+echo =====================================
+echo.
 
-# Optional: export to CSV in current folder (uncomment to use)
-# [PSCustomObject]@{
-#     FullName = $FullName
-#     Email    = $Email
-#     Age      = $Age
-#     Zip      = $Zip
-# } | Export-Csv -Path ".\UserInfo.csv" -NoTypeInformation -Append
-
-[void](Read-Host "Press Enter to finish")
+pause
