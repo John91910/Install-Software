@@ -3,10 +3,8 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 title User Information Collector
 
-:: ===== Config: set the required email domain =====
-:: 1) Display text (human-friendly)
+:: ===== Email domain config =====
 set "REQ_DOMAIN_DISPLAY=example.com"
-:: 2) Regex for findstr (escape dots)
 set "REQ_DOMAIN_REGEX=example\.com"
 
 echo ==========================
@@ -20,8 +18,6 @@ set /p "age=Enter your age: "
 :askemail
 set "email="
 set /p "email=Enter your email (@%REQ_DOMAIN_DISPLAY% only): "
-
-REM Use delayed expansion so we get the runtime value; also /C: to treat the regex as one pattern.
 echo(!email!| findstr /R /I /C:"^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@%REQ_DOMAIN_REGEX%$" >nul
 if errorlevel 1 (
     echo Invalid email. Must be name@%REQ_DOMAIN_DISPLAY%
