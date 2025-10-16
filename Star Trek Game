@@ -1,0 +1,415 @@
+<#
+EnterpriseBattle.ps1 — Difficulty + Shields Edition
+Controls:
+  F1/F2/F3 = Cadet/Ensign/Captain difficulty
+  P = Phasers, T = Torpedo, R = Respawn target
+  Up/Down = Move ship altitude, A = Toggle auto-fire, Q/Esc = Quit
+#>
+
+# ------------------- Base Config -------------------
+$FrameDelayMs    = 45
+$VerticalOffset  = 3
+$EngineFlicker   = $true
+$LoopCount       = 999     # run until quit
+
+# Trail
+$TrailLength     = 12
+$TrailChar       = '-'
+$TrailColor      = 'DarkCyan'
+$ShipColor       = 'White'
+
+# Phasers
+$PhaserColorA    = 'Red'
+$PhaserColorB    = 'Yellow'
+$PhaserLength    = 26
+$PhaserFrames    = 5
+$PhaserFreq      = 20          # auto-fire frequency (lower = more often)
+$PhaserLockText  = 'Phasers locked!'
+
+# Torpedoes
+$TorpChar        = '•'
+$TorpColorTrail  = 'DarkYellow'
+$TorpColorBody   = 'Yellow'
+$TorpFrames      = 20
+$TorpArc         = 2
+$TorpFreq        = 33          # auto-fire frequency
+
+# Targets
+$TargetSprites   = @('[=o=]','<¤>','{###}','<X>','{=*=}')
+$TargetColor     = 'Cyan'
+$TargetSpeedMin  = 1
+$TargetSpeedMax  = 2
+$TargetsPerWave  = 4
+$RespawnOnHit    = $true
+
+# UI
+$WelcomeText     = 'Welcome A+ Scholars!'
+$TitleText       = '🖖 USS Enterprise NCC-1701 — Battle Run'
+$SubText         = 'F1/F2/F3=Cadet/Ensign/Captain • P=Phaser T=Torpedo R=Respawn ↑/↓=Altitude A=Auto Q/Esc=Quit'
+$HudColor        = 'Green'
+$ScoreColor      = 'Magenta'
+
+# Shields
+$ShieldsMax      = 100
+$Shields         = 100
+$ShieldRegenPerTick = 0.12      # small regen each frame (can be tuned per difficulty)
+$ShieldHitDamage = 16           # base damage on collision (tuned per difficulty)
+$GameOver        = $false
+
+# Difficulty Runtime State
+$Global:Difficulty = 'Cadet'    # Cadet | Ensign | Captain
+$Global:AutoFire   = $true
+
+# ---------------- Safe console sizing ----------------
+try { $Width = [Console]::WindowWidth; $Height = [Console]::WindowHeight }
+catch { $Width = 100; $Height = 30 }
+
+# ---------------- Ship (ASCII) ----------------
+$ShipA = @'
+            __
+           /__\                             
+   ____---(____)--------------------.
+==/   NCC-1701  \=====================>
+  \____           --------------------'
+       \__/
+'@ -split "`n"
+$ShipB = $ShipA.Clone()
+
+# ---------------- Helpers ----------------
+function Get-SpriteSize {
+    param([string[]]$Sprite)
+    $h = $Sprite.Count
+    $w = ($Sprite | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
+    [pscustomobject]@{Width=$w; Height=$h}
+}
+function Draw-Text { param([int]$X,[int]$Y,[string]$Text,[string]$Color=$null)
+    if ($Y -lt 0 -or $Y -ge $Height) { return }
+    if ($X -ge $Width) { return }
+    if ($X -lt 0) { $clip=-$X; if($clip -ge $Text.Length){return}; $Text=$Text.Substring($clip); $X=0 }
+    if ($X + $Text.Length -gt $Width) { $Text = $Text.Substring(0,[Math]::Max(0,$Width-$X)) }
+    try {
+        [Console]::SetCursorPosition($X,$Y)
+        if ($Color) { $old=[Console]::ForegroundColor; [Console]::ForegroundColor=$Color }
+        [Console]::Write($Text)
+        if ($Color) { [Console]::ForegroundColor=$old }
+    } catch {}
+}
+function Draw-Sprite { param([int]$X,[int]$Y,[string[]]$Sprite,[string]$Color=$null)
+    for ($i=0; $i -lt $Sprite.Count; $i++) { Draw-Text -X $X -Y ($Y+$i) -Text $Sprite[$i] -Color $Color }
+}
+function Clear-Rect { param([int]$X,[int]$Y,[int]$W,[int]$H)
+    $space = ' ' * [Math]::Max(0,[Math]::Min($W,$Width))
+    for ($i=0;$i -lt $H;$i++){
+        $dy=$Y+$i; if ($dy -lt 0 -or $dy -ge $Height){continue}
+        $dx=[Math]::Max(0,$X); if ($dx -ge $Width){continue}
+        $count=[Math]::Min($W,$Width-$dx); if ($count -le 0){continue}
+        try{ [Console]::SetCursorPosition($dx,$dy); [Console]::Write($space.Substring(0,$count)) }catch{}
+    }
+}
+function Draw-Trail { param([int]$NoseX,[int]$NoseY,[int]$Length)
+    for ($i=1;$i -le $Length;$i++){ $tx=$NoseX-$i; if ($tx -lt 0){break}; Draw-Text -X $tx -Y $NoseY -Text $TrailChar -Color $TrailColor }
+}
+function Explosion { param([int]$X,[int]$Y)
+    foreach($n in @(@{f=900;d=40},@{f=500;d=70})){ [Console]::Beep($n.f,$n.d) }
+    foreach($f in @('*','@','+')){
+        Draw-Text -X ($X-1) -Y $Y -Text " $f$($f)$f " -Color 'Red'
+        Start-Sleep -Milliseconds 40
+        Draw-Text -X ($X-1) -Y $Y -Text '     '
+    }
+}
+
+# -------------- HUD / Banner / Meters --------------
+function Banner {
+    [Console]::Clear()
+    $tx = [Math]::Max(0,[int]($Width/2 - $TitleText.Length/2))
+    $sx = [Math]::Max(0,[int]($Width/2 - $SubText.Length/2))
+    $wx = [Math]::Max(0,[int]($Width/2 - $WelcomeText.Length/2))
+    try {
+        [Console]::SetCursorPosition($tx,0); [Console]::Write($TitleText)
+        [Console]::SetCursorPosition($sx,1); [Console]::Write($SubText)
+        [Console]::SetCursorPosition($wx,3)
+        $old=[Console]::ForegroundColor; [Console]::ForegroundColor='Green'
+        [Console]::Write($WelcomeText); [Console]::ForegroundColor=$old
+    } catch {}
+}
+function Show-Callout { param([string]$msg,[string]$color='Green')
+    $x=[Math]::Max(0,[int]($Width/2 - $msg.Length/2))
+    Draw-Text -X $x -Y 2 -Text (' ' * $msg.Length)
+    Draw-Text -X $x -Y 2 -Text $msg -Color $color
+}
+function Show-Score { param([int]$score)
+    $label = "Score: $score"
+    Draw-Text -X ([Math]::Max(0,$Width-$label.Length-2)) -Y 0 -Text $label -Color $ScoreColor
+}
+function Show-Mode { param([string]$mode)
+    $label = "Mode: $mode"
+    Draw-Text -X 2 -Y 0 -Text $label -Color 'Yellow'
+}
+function Show-Shields {
+    $barW = [Math]::Max(20, [int]($Width * 0.3))
+    $x = [Math]::Max(2, [int]($Width/2 - $barW/2))
+    $y = 4
+    $pct = [Math]::Max(0,[Math]::Min(1.0, $Shields/$ShieldsMax))
+    $fill = [Math]::Round($pct * $barW)
+    $color = if ($pct -ge 0.66) { 'Green' } elseif ($pct -ge 0.33) { 'Yellow' } else { 'Red' }
+    Draw-Text -X $x -Y $y -Text ('[' + ('#' * $fill) + ('-' * ($barW - $fill)) + ']') -Color $color
+    $txt = (" Shields {0,3}%% " -f [int]($pct*100))
+    Draw-Text -X ([int]($x + ($barW/2) - ($txt.Length/2))) -Y $y -Text $txt -Color 'White'
+}
+
+# ---------------- Targets ----------------
+$rand = [Random]::new()
+$Targets = New-Object System.Collections.ArrayList
+function Spawn-Targets { param([int]$count,[int]$dir)
+    for($i=0;$i -lt $count;$i++){
+        $sprite = $TargetSprites[$rand.Next(0,$TargetSprites.Count)]
+        $y = $rand.Next([Math]::Max(6,[int]($Height/5)), [Math]::Max(7,[int]($Height/2)))
+        $speed = $rand.Next($TargetSpeedMin, $TargetSpeedMax+1)
+        $x = if($dir -gt 0){ $rand.Next(5,[int]($Width/2)) } else { $rand.Next([int]($Width/2), $Width-5) }
+        [void]$Targets.Add([pscustomobject]@{ X=$x; Y=$y; Sprite=$sprite; Dead=$false; Dir=$dir; Speed=$speed })
+    }
+}
+function Draw-Targets { foreach($t in $Targets){ if(-not $t.Dead){ Draw-Text -X $t.X -Y $t.Y -Text $t.Sprite -Color $TargetColor } } }
+function Move-Targets { foreach($t in $Targets){ if($t.Dead){continue}; $t.X += ($t.Speed * $t.Dir); if($t.X -lt 0 -or $t.X -ge $Width){ $t.Dead=$true } } }
+function Clear-TargetsArea { foreach($t in $Targets){ Draw-Text -X $t.X -Y $t.Y -Text (' ' * $t.Sprite.Length) } }
+
+# Collisions: if a target crosses the ship nose x-range at same y-row -> shield damage
+function Check-Collisions {
+    param([int]$noseX,[int]$noseY,[int]$dir)
+    $hit = $false
+    foreach($t in $Targets){
+        if($t.Dead){ continue }
+        if($t.Y -eq $noseY){
+            # rough cross detection near the nose; widen range slightly
+            $nx1 = $noseX + (if($dir -gt 0){ -3 } else { -1 })
+            $nx2 = $noseX + (if($dir -gt 0){  1 } else {  3 })
+            $tx1 = $t.X; $tx2 = $t.X + ($t.Sprite.Length-1)
+            if(($tx1 -le $nx2) -and ($tx2 -ge $nx1)){
+                $t.Dead = $true
+                Explosion -X ([int](($tx1+$tx2)/2)) -Y $t.Y
+                $script:Shields = [Math]::Max(0, $script:Shields - $ShieldHitDamage)
+                $hit = $true
+            }
+        }
+    }
+    return $hit
+}
+
+# ---------------- Hit helpers for weapons ----------------
+function Check-PhaserHits { param([int]$beamX,[int]$beamY,[int]$len,[int]$dir,[ref]$score)
+    foreach($t in $Targets){
+        if($t.Dead){ continue }
+        if($t.Y -eq $beamY){
+            $tx1 = $t.X; $tx2 = $t.X + ($t.Sprite.Length-1)
+            if($dir -gt 0){ $bx1=$beamX; $bx2=$beamX+$len } else { $bx1=$beamX-$len; $bx2=$beamX }
+            if(($tx1 -le $bx2) -and ($tx2 -ge $bx1)){
+                $t.Dead=$true; Explosion -X ([int](($tx1+$tx2)/2)) -Y $t.Y; $score.Value++
+            }
+        }
+    }
+}
+function Check-TorpedoHit { param([int]$px,[int]$py,[ref]$score)
+    foreach($t in $Targets){
+        if($t.Dead){ continue }
+        $tx = $t.X + [int]($t.Sprite.Length/2); $ty = $t.Y
+        if(([Math]::Abs($px-$tx) -le 1) -and ([Math]::Abs($py-$ty) -le 1)){
+            $t.Dead=$true; Explosion -X $tx -Y $ty; $score.Value++; return $true
+        }
+    }
+    return $false
+}
+
+# ---------------- Weapons ----------------
+function Fire-Phaser { param([int]$StartX,[int]$StartY,[int]$Dir,[ref]$score)
+    Show-Callout -msg $PhaserLockText -color $HudColor
+    [Console]::Beep(1200, 40)
+    for ($f=0;$f -lt $PhaserFrames;$f++){
+        $len = [Math]::Min($PhaserLength, [Math]::Max(6,$PhaserLength - $f*2))
+        $beam = ('=' * $len)
+        $cx = if($Dir -gt 0){ $StartX } else { $StartX - $len }
+        $color = if($f % 2 -eq 0){ $PhaserColorA } else { $PhaserColorB }
+        Draw-Text -X $cx -Y $StartY -Text $beam -Color $color
+        Check-PhaserHits -beamX $StartX -beamY $StartY -len $len -dir $Dir -score ([ref]$score.Value)
+        Start-Sleep -Milliseconds ([Math]::Max(20,[int]($FrameDelayMs/2)))
+        Draw-Text -X $cx -Y $StartY -Text (' ' * $len)
+    }
+    Show-Callout -msg (' ' * $PhaserLockText.Length)
+}
+function Fire-Torpedo { param([int]$StartX,[int]$StartY,[int]$Dir,[ref]$score)
+    Show-Callout -msg 'Torpedo away!' -color $HudColor
+    [Console]::Beep(700, 60)
+    $x=$StartX; $y=$StartY
+    for($t=0;$t -lt $TorpFrames;$t++){
+        $dy=[Math]::Round([Math]::Sin(($t/3.0))*$TorpArc)
+        $px=$x+($t*$Dir); $py=$y+$dy
+        if($px -lt 0 -or $px -ge $Width){ break }
+        if($py -gt 1 -and $py -lt ($Height-1)){
+            if($t -gt 1){ Draw-Text -X ($px-$Dir) -Y $py -Text '.' -Color $TorpColorTrail }
+            Draw-Text -X $px -Y $py -Text $TorpChar -Color $TorpColorBody
+            Start-Sleep -Milliseconds ([Math]::Max(20,[int]($FrameDelayMs/1.5)))
+            if(Check-TorpedoHit -px $px -py $py -score ([ref]$score.Value)){ Draw-Text -X $px -Y $py -Text ' '; break }
+            Draw-Text -X $px -Y $py -Text ' '
+        }
+    }
+    [Console]::Beep(1000, 40); [Console]::Beep(400, 70)
+    Show-Callout -msg (' ' * 13)
+}
+
+# ---------------- Difficulty ----------------
+function Apply-Difficulty {
+    param([ValidateSet('Cadet','Ensign','Captain')] [string]$Mode)
+    $Global:Difficulty = $Mode
+    switch ($Mode) {
+        'Cadet' {
+            $script:TargetSpeedMin = 1; $script:TargetSpeedMax = 2
+            $script:TargetsPerWave = 4
+            $script:PhaserFreq = 18; $script:TorpFreq = 28
+            $script:TorpFrames = 22; $script:ShieldHitDamage = 12; $script:ShieldRegenPerTick = 0.18
+        }
+        'Ensign' {
+            $script:TargetSpeedMin = 1; $script:TargetSpeedMax = 3
+            $script:TargetsPerWave = 5
+            $script:PhaserFreq = 20; $script:TorpFreq = 33
+            $script:TorpFrames = 20; $script:ShieldHitDamage = 16; $script:ShieldRegenPerTick = 0.12
+        }
+        'Captain' {
+            $script:TargetSpeedMin = 2; $script:TargetSpeedMax = 4
+            $script:TargetsPerWave = 6
+            $script:PhaserFreq = 24; $script:TorpFreq = 38
+            $script:TorpFrames = 18; $script:ShieldHitDamage = 22; $script:ShieldRegenPerTick = 0.06
+        }
+    }
+}
+
+# ---------------- Input (non-blocking) ----------------
+function Handle-Input {
+    param([ref]$shipY,[int]$noseX,[int]$noseY,[int]$dir,[ref]$score)
+    while ([Console]::KeyAvailable) {
+        $k = [Console]::ReadKey($true)
+        switch ($k.Key) {
+            'F1'        { Apply-Difficulty -Mode 'Cadet'; Show-Callout -msg 'Mode: Cadet' -color 'Yellow' }
+            'F2'        { Apply-Difficulty -Mode 'Ensign'; Show-Callout -msg 'Mode: Ensign' -color 'Yellow' }
+            'F3'        { Apply-Difficulty -Mode 'Captain'; Show-Callout -msg 'Mode: Captain' -color 'Yellow' }
+            'P'         { Fire-Phaser  -StartX ($noseX + (if($dir -gt 0){-8}else{2})) -StartY $noseY -Dir $dir -score ([ref]$score.Value) }
+            'T'         { Fire-Torpedo -StartX ($noseX + (if($dir -gt 0){-2}else{2})) -StartY $noseY -Dir $dir -score ([ref]$score.Value) }
+            'R'         { Spawn-Targets -count 1 -dir $dir }
+            'UpArrow'   { $shipY.Value = [Math]::Max(6, $shipY.Value - 1) }
+            'DownArrow' { $shipY.Value = [Math]::Min($Height-6, $shipY.Value + 1) }
+            'A'         { $Global:AutoFire = -not $Global:AutoFire; Show-Callout -msg ("Auto-fire: " + ($(if($Global:AutoFire){'ON'}else{'OFF'}))) -color 'Yellow' }
+            'Q'         { throw "Quit" }
+            'Escape'    { throw "Quit" }
+        }
+    }
+}
+
+# ---------------- Main ----------------
+$shipSize = Get-SpriteSize $ShipA
+$shipY = [Math]::Max(6, [int]($VerticalOffset + ($Height / 3)))
+$noseOffsetY = 2
+$score = 0
+
+try {
+    [Console]::CursorVisible = $false
+    Banner
+    Apply-Difficulty -Mode $Global:Difficulty
+    Show-Score -score $score
+    Show-Mode  -mode $Global:Difficulty
+    Show-Shields
+
+    for ($loop=0; $loop -lt $LoopCount -and -not $GameOver; $loop++) {
+
+        # spawn targets for this direction
+        $Targets.Clear() | Out-Null
+        Spawn-Targets -count $TargetsPerWave -dir 1
+
+        # ---- Left-to-right pass ----
+        for ($x = -$shipSize.Width; $x -le $Width -and -not $GameOver; $x++) {
+            $sprite = if ($EngineFlicker -and ($x % 2 -eq 0)) { $ShipB } else { $ShipA }
+            Draw-Targets
+            Draw-Sprite -X $x -Y $shipY -Sprite $sprite -Color $ShipColor
+
+            $noseX = $x + $shipSize.Width - 6
+            $noseY = $shipY + $noseOffsetY
+            Draw-Trail -NoseX $noseX -NoseY $noseY -Length $TrailLength
+
+            if ($x % 8 -eq 0) { [Console]::Beep(330, 15) }
+
+            Handle-Input -shipY ([ref]$shipY) -noseX $noseX -noseY $noseY -dir 1 -score ([ref]$score)
+            if ($Global:AutoFire) {
+                if ($x % $PhaserFreq -eq 0) { Fire-Phaser  -StartX ($noseX - 8) -StartY $noseY -Dir 1 -score ([ref]$score) }
+                if ($x % $TorpFreq  -eq 0) { Fire-Torpedo -StartX ($noseX - 2) -StartY $noseY -Dir 1 -score ([ref]$score) }
+            }
+
+            # Regen & Collision
+            $Shields = [Math]::Min($ShieldsMax, $Shields + $ShieldRegenPerTick)
+            if (Check-Collisions -noseX $noseX -noseY $noseY -dir 1) { [Console]::Beep(200,70) }
+            Show-Score -score $score; Show-Mode -mode $Global:Difficulty; Show-Shields
+
+            if ($Shields -le 0) { $GameOver = $true; break }
+
+            Start-Sleep -Milliseconds $FrameDelayMs
+            Clear-TargetsArea
+            Move-Targets
+            if($RespawnOnHit -and ($Targets | Where-Object {!$_.Dead} | Measure-Object).Count -lt [math]::Ceiling($TargetsPerWave*0.5)){
+                Spawn-Targets -count 1 -dir 1
+            }
+            Clear-Rect -X ($x-($TrailLength+3)) -Y ($shipY-1) -W ($shipSize.Width+$TrailLength+10) -H ($shipSize.Height+2)
+        }
+
+        foreach ($n in @( @{f=440;d=40}, @{f=587;d=40}, @{f=784;d=60} )) { [Console]::Beep($n.f,$n.d) }
+
+        # spawn targets for the return direction
+        $Targets.Clear() | Out-Null
+        Spawn-Targets -count $TargetsPerWave -dir -1
+
+        # ---- Right-to-left pass ----
+        for ($x = $Width; $x -ge -$shipSize.Width -and -not $GameOver; $x--) {
+            $sprite = if ($EngineFlicker -and ($x % 2 -eq 0)) { $ShipB } else { $ShipA }
+            Draw-Targets
+            Draw-Sprite -X $x -Y $shipY -Sprite $sprite -Color $ShipColor
+
+            $noseX = $x + 6
+            $noseY = $shipY + $noseOffsetY
+            Draw-Trail -NoseX $noseX -NoseY $noseY -Length $TrailLength
+
+            if ($x % 8 -eq 0) { [Console]::Beep(300, 15) }
+
+            Handle-Input -shipY ([ref]$shipY) -noseX $noseX -noseY $noseY -dir -1 -score ([ref]$score)
+            if ($Global:AutoFire) {
+                if ($x % $PhaserFreq -eq 0) { Fire-Phaser  -StartX ($noseX + 2) -StartY $noseY -Dir -1 -score ([ref]$score) }
+                if ($x % $TorpFreq  -eq 0) { Fire-Torpedo -StartX ($noseX + 2) -StartY $noseY -Dir -1 -score ([ref]$score) }
+            }
+
+            # Regen & Collision
+            $Shields = [Math]::Min($ShieldsMax, $Shields + $ShieldRegenPerTick)
+            if (Check-Collisions -noseX $noseX -noseY $noseY -dir -1) { [Console]::Beep(200,70) }
+            Show-Score -score $score; Show-Mode -mode $Global:Difficulty; Show-Shields
+
+            if ($Shields -le 0) { $GameOver = $true; break }
+
+            Start-Sleep -Milliseconds $FrameDelayMs
+            Clear-TargetsArea
+            Move-Targets
+            if($RespawnOnHit -and ($Targets | Where-Object {!$_.Dead} | Measure-Object).Count -lt [math]::Ceiling($TargetsPerWave*0.5)){
+                Spawn-Targets -count 1 -dir -1
+            }
+            Clear-Rect -X ($x-3) -Y ($shipY-1) -W ($shipSize.Width+$TrailLength+10) -H ($shipSize.Height+2)
+        }
+
+        foreach ($n in @( @{f=784;d=40}, @{f=987;d=40}, @{f=1175;d=80} )) { [Console]::Beep($n.f,$n.d) }
+    }
+
+} catch {
+    if ($_.Exception.Message -eq 'Quit') { }
+    else { Write-Host "`nSimulation interrupted: $($_.Exception.Message)" -ForegroundColor Yellow }
+} finally {
+    [Console]::CursorVisible = $true
+    try { [Console]::SetCursorPosition(0, [Math]::Min($Height-1, [Console]::CursorTop+2)) } catch {}
+    if ($GameOver) {
+        Write-Host ""
+        Write-Host "⚠️  Shields depleted! The Enterprise is adrift." -ForegroundColor Red
+    }
+    Write-Host ("Final Score: {0}" -f $score) -ForegroundColor $ScoreColor
+    Write-Host ("Mode: {0}" -f $Global:Difficulty) -ForegroundColor 'Yellow'
+    Write-Host "Live long and prosper. 🖖"
+}
