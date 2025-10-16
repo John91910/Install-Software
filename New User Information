@@ -12,10 +12,10 @@ set /p "name=Enter your full name: "
 set /p "age=Enter your age: "
 
 :askemail
-set /p "email=Enter your email: "
-echo %email% | findstr /R "^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@[A-Za-z0-9.-][A-Za-z0-9.-]*\.[A-Za-z][A-Za-z][A-Za-z]*$" >nul
+set /p "email=Enter your email (@example.com only): "
+echo %email% | findstr /R /I "^[A-Za-z0-9._%%+-][A-Za-z0-9._%%+-]*@example\.com$" >nul
 if errorlevel 1 (
-    echo Invalid email format. Please try again.
+    echo Invalid email. Must be name@example.com
     goto askemail
 )
 
